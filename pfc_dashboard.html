@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Factor Correction Monitor</title>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Socket.IO for real-time updates -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            color: #eee;
+            overflow-x: hidden;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #2a2a3e;
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+        
+        .header {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0,0,0,0.3);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 1px solid rgba(102, 126, 234, 0.3);
+        }
+        
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .logo p {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        
+        .status-badge {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .badge {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        
+        .badge.online {
+            background: #10b981;
+            color: white;
+        }
+        
+        .badge.warning {
+            background: #f59e0b;
+            color: white;
+        }
+        
+        .badge.critical {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .badge.excellent {
+            background: #10b981;
+            color: white;
+        }
+        
+        .badge.good {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        
+        /* PF Gauge Card */
+        .pf-card {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        
+        .pf-gauge {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+        }
+        
+        .pf-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2.5rem;
+            font-weight: 800;
+            text-align: center;
+        }
+        
+        .pf-label {
+            font-size: 0.85rem;
+            color: #888;
+            margin-top: 0.5rem;
+        }
+        
+        canvas {
+            max-width: 100%;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #ccc;
+        }
+        
+        .section-title i {
+            font-size: 1.3rem;
+            color: #667eea;
+        }
+        
+        .stat-card {
+            background: #1e293b;
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+        
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-header i {
+            font-size: 2rem;
+            color: #667eea;
+        }
+        
+        .stat-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #fff;
+            margin: 0.5rem 0;
+        }
+        
+        .stat-unit {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .relay-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .relay-on {
+            background: #ef4444;
+            box-shadow: 0 0 10px #ef4444;
+        }
+        
+        .relay-off {
+            background: #6b7280;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .chart-container {
+            background: #1e293b;
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+        
+        .chart-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #ccc;
+        }
+        
+        /* Recommendations Section */
+        .recommendations-container {
+            background: #1e293b;
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+        
+        .recommendation-card {
+            background: #0f172a;
+            border-radius: 15px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid;
+        }
+        
+        .recommendation-card.critical { border-left-color: #dc2626; }
+        .recommendation-card.warning { border-left-color: #f59e0b; }
+        .recommendation-card.monitor { border-left-color: #3b82f6; }
+        .recommendation-card.normal { border-left-color: #10b981; }
+        .recommendation-card.performance { border-left-color: #8b5cf6; }
+        
+        .recommendation-title {
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .recommendation-actions {
+            list-style: none;
+            margin-top: 0.5rem;
+        }
+        
+        .recommendation-actions li {
+            font-size: 0.85rem;
+            color: #aaa;
+            padding: 0.25rem 0;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+        
+        .recommendation-actions li:before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: #667eea;
+        }
+        
+        .priority-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        
+        .priority-high { background: #dc2626; color: white; }
+        .priority-medium { background: #f59e0b; color: black; }
+        .priority-low { background: #3b82f6; color: white; }
+        
+        /* Alerts Section */
+        .alerts-container {
+            background: #1e293b;
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .alert-item {
+            background: #0f172a;
+            border-radius: 10px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .alert-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .alert-icon.critical { background: #dc2626; }
+        .alert-icon.warning { background: #f59e0b; }
+        .alert-icon.info { background: #3b82f6; }
+        
+        .alert-content {
+            flex: 1;
+        }
+        
+        .alert-message {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .alert-time {
+            font-size: 0.7rem;
+            color: #666;
+        }
+        
+        .data-table-container {
+            background: #1e293b;
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+        
+        .data-table th {
+            background: #0f172a;
+            font-weight: 600;
+            color: #ccc;
+        }
+        
+        .data-table tr:hover {
+            background: #334155;
+        }
+        
+        @media (max-width: 768px) {
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+            
+            .dashboard-container {
+                padding: 0 1rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .spinner {
+            border: 3px solid #334155;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .pf-excellent { color: #10b981; }
+        .pf-good { color: #3b82f6; }
+        .pf-acceptable { color: #f59e0b; }
+        .pf-poor { color: #ef4444; }
+        
+        .capacitor-bank {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 1rem;
+        }
+        
+        .capacitor {
+            text-align: center;
+            padding: 1rem;
+            background: #0f172a;
+            border-radius: 15px;
+            min-width: 100px;
+        }
+        
+        .capacitor.active {
+            border: 2px solid #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+        
+        .capacitor .capacitor-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+        
+        .capacitor .capacitor-status {
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">
+                <h1>⚡ POWER FACTOR CORRECTION MONITOR</h1>
+                <p>Real-time PF Monitoring & Automatic Correction</p>
+            </div>
+            <div class="status-badge">
+                <div class="badge online" id="connectionStatus">
+                    <i class="fas fa-circle"></i> Connected
+                </div>
+                <div class="badge" id="pfQualityBadge">
+                    <i class="fas fa-chart-line"></i> Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="dashboard-container">
+        <!-- PF Gauge Card -->
+        <div class="pf-card">
+            <div class="pf-gauge">
+                <canvas id="pfGauge" width="200" height="200"></canvas>
+                <div class="pf-value">
+                    <span id="pfValue">0.82</span>
+                </div>
+            </div>
+            <div class="pf-label">Power Factor | Target: <span id="targetPf">0.95</span></div>
+            <div style="margin-top: 1rem;" id="pfStatusText">
+                <span class="relay-indicator" id="relayIndicator"></span>
+                <span id="relayStatusText">Relay: OFF</span>
+            </div>
+        </div>
+        
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Voltage</span>
+                    <i class="fas fa-bolt"></i>
+                </div>
+                <div class="stat-value" id="voltage">230.0</div>
+                <div class="stat-unit">Volts (V)</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Current</span>
+                    <i class="fas fa-waveform"></i>
+                </div>
+                <div class="stat-value" id="current">0.00</div>
+                <div class="stat-unit">Amperes (A)</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Real Power</span>
+                    <i class="fas fa-plug"></i>
+                </div>
+                <div class="stat-value" id="realPower">0.0</div>
+                <div class="stat-unit">Watts (W)</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Reactive Power</span>
+                    <i class="fas fa-bolt"></i>
+                </div>
+                <div class="stat-value" id="reactivePower">0.0</div>
+                <div class="stat-unit">Volt-Amperes Reactive (VAR)</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Apparent Power</span>
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stat-value" id="apparentPower">0.0</div>
+                <div class="stat-unit">Volt-Amperes (VA)</div>
+            </div>
+        </div>
+        
+        <!-- Energy and Load Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Energy Consumed</span>
+                    <i class="fas fa-charging-station"></i>
+                </div>
+                <div class="stat-value" id="energy">0.00</div>
+                <div class="stat-unit" id="energyUnit">kWh</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Load Status</span>
+                    <i class="fas fa-weight-hanging"></i>
+                </div>
+                <div class="stat-value" id="loadStatus">NONE</div>
+                <div class="stat-unit">Current Load Level</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Total Capacitance</span>
+                    <i class="fas fa-microchip"></i>
+                </div>
+                <div class="stat-value" id="totalCap">0</div>
+                <div class="stat-unit">Microfarads (μF)</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">PF Quality</span>
+                    <i class="fas fa-star"></i>
+                </div>
+                <div class="stat-value" id="pfQuality">POOR</div>
+                <div class="stat-unit">Power Factor Rating</div>
+            </div>
+        </div>
+        
+        <!-- Capacitor Bank Status -->
+        <div class="chart-container">
+            <div class="chart-title">
+                <i class="fas fa-microchip"></i> Capacitor Bank Status
+            </div>
+            <div class="capacitor-bank" id="capacitorBank">
+                <div class="capacitor" id="cap1">
+                    <div class="capacitor-value">8 μF</div>
+                    <div class="capacitor-status">OFF</div>
+                </div>
+                <div class="capacitor" id="cap2">
+                    <div class="capacitor-value">3 μF</div>
+                    <div class="capacitor-status">OFF</div>
+                </div>
+                <div class="capacitor" id="cap3">
+                    <div class="capacitor-value">3 μF</div>
+                    <div class="capacitor-status">OFF</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Charts -->
+        <div class="two-column">
+            <div class="chart-container">
+                <div class="chart-title">
+                    <i class="fas fa-chart-line"></i> Real-time Trends
+                </div>
+                <canvas id="trendChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-title">
+                    <i class="fas fa-chart-pie"></i> Power Analysis
+                </div>
+                <canvas id="powerChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Recommendations Section -->
+        <div class="recommendations-container">
+            <div class="chart-title">
+                <i class="fas fa-lightbulb"></i> SMART RECOMMENDATIONS
+            </div>
+            <div id="recommendationsList">
+                <div class="loading"><div class="spinner"></div> Loading recommendations...</div>
+            </div>
+        </div>
+        
+        <!-- Alerts Section -->
+        <div class="alerts-container">
+            <div class="chart-title">
+                <i class="fas fa-bell"></i> LIVE ALERTS
+            </div>
+            <div id="alertsList">
+                <div style="text-align: center; color: #666;">No alerts</div>
+            </div>
+        </div>
+        
+        <!-- Data Table -->
+        <div class="data-table-container">
+            <div class="chart-title">
+                <i class="fas fa-table"></i> Live Data Stream
+            </div>
+            <table class="data-table" id="dataTable">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Voltage (V)</th>
+                        <th>Current (A)</th>
+                        <th>Power Factor</th>
+                        <th>Real Power (W)</th>
+                        <th>Capacitors</th>
+                        <th>PF Quality</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr>
+                        <td colspan="7" class="loading">
+                            <div class="spinner"></div>
+                            Waiting for data...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        // Socket.IO connection
+        const socket = io();
+        
+        // Chart variables
+        let trendChart, powerChart, gaugeCanvas;
+        
+        // Initialize charts
+        function initCharts() {
+            // Trend Chart
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Current (A)',
+                        data: [],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y'
+                    }, {
+                        label: 'Power Factor',
+                        data: [],
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { position: 'top', labels: { color: '#ccc' } }
+                    },
+                    scales: {
+                        y: {
+                            title: { display: true, text: 'Current (A)', color: '#ccc' },
+                            grid: { color: '#334155' },
+                            ticks: { color: '#ccc' }
+                        },
+                        y1: {
+                            position: 'right',
+                            title: { display: true, text: 'Power Factor', color: '#ccc' },
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: '#ccc', min: 0, max: 1 }
+                        },
+                        x: {
+                            grid: { color: '#334155' },
+                            ticks: { color: '#ccc' }
+                        }
+                    }
+                }
+            });
+            
+            // Power Chart (Pie)
+            const powerCtx = document.getElementById('powerChart').getContext('2d');
+            powerChart = new Chart(powerCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Real Power (W)', 'Reactive Power (VAR)'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: ['#10b981', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#ccc' } }
+                    }
+                }
+            });
+            
+            // PF Gauge
+            gaugeCanvas = document.getElementById('pfGauge').getContext('2d');
+            drawGauge(0.82);
+        }
+        
+        function drawGauge(pf) {
+            const ctx = gaugeCanvas;
+            const width = 200;
+            const height = 200;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw background arc
+            const startAngle = -Math.PI / 2;
+            const endAngle = Math.PI / 2;
+            
+            // Background arc (gray)
+            ctx.beginPath();
+            ctx.arc(width/2, height/2, 80, startAngle, endAngle);
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 20;
+            ctx.stroke();
+            
+            // Colored arc based on PF
+            const angle = startAngle + (pf * Math.PI);
+            ctx.beginPath();
+            ctx.arc(width/2, height/2, 80, startAngle, angle);
+            
+            // Set color based on PF
+            if (pf >= 0.95) ctx.strokeStyle = '#10b981';
+            else if (pf >= 0.90) ctx.strokeStyle = '#3b82f6';
+            else if (pf >= 0.85) ctx.strokeStyle = '#f59e0b';
+            else ctx.strokeStyle = '#ef4444';
+            
+            ctx.lineWidth = 20;
+            ctx.stroke();
+            
+            // Draw tick marks
+            for (let i = 0; i <= 10; i++) {
+                const tickPF = i / 10;
+                const tickAngle = startAngle + (tickPF * Math.PI);
+                const x1 = width/2 + 70 * Math.cos(tickAngle);
+                const y1 = height/2 + 70 * Math.sin(tickAngle);
+                const x2 = width/2 + 80 * Math.cos(tickAngle);
+                const y2 = height/2 + 80 * Math.sin(tickAngle);
+                
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+        
+        // Current data storage
+        let currentData = {};
+        
+        // Socket event listeners
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            document.getElementById('connectionStatus').innerHTML = '<i class="fas fa-circle"></i> Connected';
+            document.getElementById('connectionStatus').classList.add('online');
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('Disconnected from server');
+            document.getElementById('connectionStatus').innerHTML = '<i class="fas fa-circle"></i> Disconnected';
+        });
+        
+        socket.on('data_update', function(data) {
+            currentData = data;
+            updateDashboard(data);
+        });
+        
+        socket.on('recommendations_update', function(data) {
+            updateRecommendations(data.recommendations);
+        });
+        
+        socket.on('new_alert', function(alert) {
+            addAlert(alert);
+        });
+        
+        function updateDashboard(data) {
+            // Update basic values
+            document.getElementById('voltage').innerHTML = (data.voltage || 230).toFixed(1);
+            document.getElementById('current').innerHTML = (data.current || 0).toFixed(2);
+            document.getElementById('realPower').innerHTML = (data.real_power || 0).toFixed(1);
+            document.getElementById('apparentPower').innerHTML = (data.apparent_power || 0).toFixed(1);
+            document.getElementById('reactivePower').innerHTML = (data.reactive_power || 0).toFixed(1);
+            document.getElementById('targetPf').innerHTML = (data.target_pf || 0.95).toFixed(3);
+            
+            // Update PF
+            const pf = data.power_factor || 0.82;
+            document.getElementById('pfValue').innerHTML = pf.toFixed(3);
+            drawGauge(pf);
+            
+            // Update Energy
+            const energy = data.energy_kwh || data.energy_wh / 1000 || 0;
+            if (energy < 100) {
+                document.getElementById('energy').innerHTML = energy.toFixed(2);
+                document.getElementById('energyUnit').innerHTML = 'kWh';
+            } else {
+                document.getElementById('energy').innerHTML = (energy / 1000).toFixed(2);
+                document.getElementById('energyUnit').innerHTML = 'MWh';
+            }
+            
+            // Update Load Status
+            document.getElementById('loadStatus').innerHTML = data.load_status || 'NONE';
+            
+            document.getElementById('totalCap').innerHTML = (data.total_capacitance || 0).toFixed(0);
+            
+            // Update PF Quality
+            const pfQuality = data.pf_quality || 'POOR';
+            document.getElementById('pfQuality').innerHTML = pfQuality;
+            
+            // Update PF Quality Badge
+            const pfBadge = document.getElementById('pfQualityBadge');
+            pfBadge.className = 'badge';
+            if (pf >= 0.95) {
+                pfBadge.classList.add('excellent');
+                pfBadge.innerHTML = '<i class="fas fa-trophy"></i> EXCELLENT PF';
+            } else if (pf >= 0.90) {
+                pfBadge.classList.add('good');
+                pfBadge.innerHTML = '<i class="fas fa-check"></i> GOOD PF';
+            } else if (pf >= 0.85) {
+                pfBadge.classList.add('warning');
+                pfBadge.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ACCEPTABLE PF';
+            } else {
+                pfBadge.classList.add('critical');
+                pfBadge.innerHTML = '<i class="fas fa-exclamation-circle"></i> POOR PF';
+            }
+            
+            // Update Capacitor Bank Display
+            const cap1Active = data.cap1_state || false;
+            const cap2Active = data.cap2_state || false;
+            const cap3Active = data.cap3_state || false;
+            
+            const cap1Div = document.getElementById('cap1');
+            const cap2Div = document.getElementById('cap2');
+            const cap3Div = document.getElementById('cap3');
+            
+            if (cap1Div) {
+                if (cap1Active) {
+                    cap1Div.classList.add('active');
+                    cap1Div.querySelector('.capacitor-status').innerHTML = '✅ ON';
+                } else {
+                    cap1Div.classList.remove('active');
+                    cap1Div.querySelector('.capacitor-status').innerHTML = '⚫ OFF';
+                }
+            }
+            if (cap2Div) {
+                if (cap2Active) {
+                    cap2Div.classList.add('active');
+                    cap2Div.querySelector('.capacitor-status').innerHTML = '✅ ON';
+                } else {
+                    cap2Div.classList.remove('active');
+                    cap2Div.querySelector('.capacitor-status').innerHTML = '⚫ OFF';
+                }
+            }
+            if (cap3Div) {
+                if (cap3Active) {
+                    cap3Div.classList.add('active');
+                    cap3Div.querySelector('.capacitor-status').innerHTML = '✅ ON';
+                } else {
+                    cap3Div.classList.remove('active');
+                    cap3Div.querySelector('.capacitor-status').innerHTML = '⚫ OFF';
+                }
+            }
+            
+            // Update Relay Status
+            const relayIndicator = document.getElementById('relayIndicator');
+            const relayText = document.getElementById('relayStatusText');
+            const anyActive = cap1Active || cap2Active || cap3Active;
+            
+            if (anyActive) {
+                relayIndicator.className = 'relay-indicator relay-on';
+                let capList = [];
+                if (cap1Active) capList.push('8μF');
+                if (cap2Active) capList.push('3μF');
+                if (cap3Active) capList.push('3μF');
+                relayText.innerHTML = `🔴 Capacitors ON: ${capList.join(' + ')} (${data.total_capacitance || 0}μF total)`;
+            } else {
+                relayIndicator.className = 'relay-indicator relay-off';
+                relayText.innerHTML = '⚫ Capacitors OFF - No correction';
+            }
+            
+            // Update PF Status Text color
+            const pfStatusText = document.getElementById('pfStatusText');
+            if (pf >= 0.95) pfStatusText.style.color = '#10b981';
+            else if (pf >= 0.90) pfStatusText.style.color = '#3b82f6';
+            else if (pf >= 0.85) pfStatusText.style.color = '#f59e0b';
+            else pfStatusText.style.color = '#ef4444';
+            
+            // Update Power Chart
+            const reactivePower = (data.apparent_power || 0) - (data.real_power || 0);
+            powerChart.data.datasets[0].data = [data.real_power || 0, reactivePower];
+            powerChart.update();
+            
+            // Update Trend Chart
+            updateTrendChart(data);
+            
+            // Update Table
+            updateTable(data);
+        }
+        
+        function updateTrendChart(data) {
+            const now = new Date().toLocaleTimeString();
+            
+            if (trendChart.data.labels.length > 20) {
+                trendChart.data.labels.shift();
+                trendChart.data.datasets[0].data.shift();
+                trendChart.data.datasets[1].data.shift();
+            }
+            
+            trendChart.data.labels.push(now);
+            trendChart.data.datasets[0].data.push(data.current || 0);
+            trendChart.data.datasets[1].data.push(data.power_factor || 0.82);
+            trendChart.update();
+        }
+        
+        function updateTable(data) {
+            const tableBody = document.getElementById('tableBody');
+            const newRow = document.createElement('tr');
+            
+            const now = new Date().toLocaleTimeString();
+            const pf = data.power_factor || 0.82;
+            let pfColor = '#10b981';
+            if (pf < 0.85) pfColor = '#ef4444';
+            else if (pf < 0.90) pfColor = '#f59e0b';
+            else if (pf < 0.95) pfColor = '#3b82f6';
+            
+            const capStatus = [];
+            if (data.cap1_state) capStatus.push('8');
+            if (data.cap2_state) capStatus.push('3');
+            if (data.cap3_state) capStatus.push('3');
+            const capText = capStatus.length > 0 ? capStatus.join('+') + 'μF' : 'OFF';
+            
+            newRow.innerHTML = `
+                <td>${now}</td>
+                <td>${(data.voltage || 230).toFixed(1)}</td>
+                <td>${(data.current || 0).toFixed(2)}</td>
+                <td style="color: ${pfColor}; font-weight: 600;">${pf.toFixed(3)}</td>
+                <td>${(data.real_power || 0).toFixed(1)}</td>
+                <td>${capText}</td>
+                <td style="color: ${pfColor};">${data.pf_quality || 'POOR'}</td>
+            `;
+            
+            tableBody.insertBefore(newRow, tableBody.firstChild);
+            while (tableBody.children.length > 10) {
+                tableBody.removeChild(tableBody.lastChild);
+            }
+        }
+        
+        function updateRecommendations(recommendations) {
+            const container = document.getElementById('recommendationsList');
+            if (!recommendations || recommendations.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #666;">No recommendations at this time</div>';
+                return;
+            }
+            
+            let html = '';
+            for (let rec of recommendations) {
+                const type = rec.type || 'normal';
+                const priority = rec.priority || 'NORMAL';
+                let priorityClass = '';
+                if (priority === 'HIGH') priorityClass = 'priority-high';
+                else if (priority === 'MEDIUM') priorityClass = 'priority-medium';
+                else if (priority === 'LOW') priorityClass = 'priority-low';
+                
+                html += `
+                    <div class="recommendation-card ${type}">
+                        <div class="recommendation-title">
+                            ${rec.message}
+                            <span class="priority-badge ${priorityClass}">${priority}</span>
+                        </div>
+                        <ul class="recommendation-actions">
+                            ${rec.actions.map(action => `<li>${action}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+        
+        function addAlert(alert) {
+            const container = document.getElementById('alertsList');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert-item';
+            
+            let iconClass = 'info';
+            if (alert.type === 'critical') iconClass = 'critical';
+            else if (alert.type === 'warning') iconClass = 'warning';
+            
+            alertDiv.innerHTML = `
+                <div class="alert-icon ${iconClass}">
+                    <i class="fas fa-${alert.type === 'critical' ? 'exclamation-triangle' : 'bell'}" style="color: white;"></i>
+                </div>
+                <div class="alert-content">
+                    <div class="alert-message">${alert.message}</div>
+                    <div class="alert-time">${alert.timestamp}</div>
+                </div>
+            `;
+            
+            container.insertBefore(alertDiv, container.firstChild);
+            while (container.children.length > 10) {
+                container.removeChild(container.lastChild);
+            }
+        }
+        
+        // Fetch initial data
+        fetch('/api/current-data')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.data) {
+                    updateDashboard(data.data);
+                }
+            });
+        
+        fetch('/api/recommendations')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.recommendations) {
+                    updateRecommendations(data.recommendations);
+                }
+            });
+        
+        fetch('/api/alerts')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.alerts) {
+                    data.alerts.forEach(alert => addAlert(alert));
+                }
+            });
+        
+        // Initialize charts when page loads
+        initCharts();
+    </script>
+</body>
+</html>
