@@ -3,6 +3,7 @@ POWER FACTOR CORRECTION SYSTEM - Python Backend
 Fetches power data from URL endpoint and serves to Web Dashboard
 """
 
+import os
 import time
 import json
 from datetime import datetime
@@ -16,7 +17,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # URL to fetch real-time power data from (Arduino/ESP32 cloud endpoint)
-DATA_URL = "https://smartmeter-isps.onrender.com/api/data"
+DATA_URL = os.environ.get('DATA_URL', "https://smartmeter-isps.onrender.com/api/data")
 FETCH_INTERVAL = 3  # seconds between fetches
 
 app = Flask(__name__)
@@ -1600,10 +1601,10 @@ if __name__ == '__main__':
     reader_thread = threading.Thread(target=fetch_from_url, daemon=True)
     reader_thread.start()
     
+    port = int(os.environ.get('PORT', 5000))
     print("✅ System started!")
-    print("📊 IMPORTANT: Open this URL in your browser:")
-    print("   http://localhost:5000")
+    print(f"📊 Web Dashboard: http://0.0.0.0:{port}")
     print("🔌 WebSocket: Real-time updates enabled")
     print("\nPress Ctrl+C to stop\n")
     
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, use_reloader=False)
