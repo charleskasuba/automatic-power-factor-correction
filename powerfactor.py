@@ -1607,4 +1607,4 @@ if __name__ == '__main__':
     print("🔌 WebSocket: Real-time updates enabled")
     print("\nPress Ctrl+C to stop\n")
     
-    socketio.run(app, host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
