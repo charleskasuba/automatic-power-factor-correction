@@ -36,6 +36,7 @@ int activeStep = 0; // 0=None, 1=3uF, 2=3uF, 3=6uF, 4=8uF, 5=11uF, 6=14uF
 unsigned long lastSend = 0;
 unsigned long lastWiFiCheck = 0;
 unsigned long lastDisplaySwitch = 0;
+unsigned long lastRelayChange = 0;
 int displayPage = 0; 
 
 // --- Function Prototypes ---
@@ -221,12 +222,45 @@ float readAnalogCurrent() {
   return (rmsCurrent < 0.08) ? 0.0 : rmsCurrent; 
 }
 
-// --- Added Placeholders for Missing Functions to Clear Compiling ---
 void adjustPowerFactor(float currentPF, float currentPower) {
-  // Add your logic here to increment/decrement activeStep based on currentPF & TARGET_PF
-  // Example: if (currentPF < TARGET_PF && currentPower > MIN_POWER_WATT) { ... }
+  const float HYST_OFF = 0.97;
+  const float HYST_ON = 0.93;
+  static int cooldown = 0;
+
+  if (currentPower < MIN_POWER_WATT) {
+    setCapacitorStep(0);
+    activeStep = 0;
+    return;
+  }
+
+  if (cooldown > 0) {
+    cooldown--;
+    return;
+  }
+
+  if (currentPF < HYST_ON && activeStep < 6) {
+    setCapacitorStep(activeStep + 1);
+    activeStep++;
+    cooldown = 10;
+  } else if (currentPF > HYST_OFF && activeStep > 0) {
+    setCapacitorStep(activeStep - 1);
+    activeStep--;
+    cooldown = 10;
+  }
 }
 
 void setCapacitorStep(int step) {
-  // Add your logic here to drive the relays based on the given step number
+  if (step < 0 || step > 6) return;
+  if (step == activeStep) return;
+
+  bool r1 = (step >= 4);         // step 4,5,6
+  bool r2 = (step == 1 || step == 3 || step >= 5);  // step 1,3,5,6
+  bool r3 = (step == 2 || step == 3 || step == 6);   // step 2,3,6
+
+  digitalWrite(RELAY_8UF_PIN, r1 ? LOW : HIGH);
+  digitalWrite(RELAY_3UF_PIN, r2 ? LOW : HIGH);
+  digitalWrite(RELAY_3UF_B_PIN, r3 ? LOW : HIGH);
+
+  Serial.printf("⚡ Relays set to step %d: R1=%s R2=%s R3=%s\n",
+    step, r1 ? "ON" : "OFF", r2 ? "ON" : "OFF", r3 ? "ON" : "OFF");
 }
