@@ -58,98 +58,94 @@ class PFCMonitor:
         self.last_alert_time = {}
         self.last_data_time = time.time()
         
-    def fetch_from_url(self):
-        """Fetch data from URL endpoint and update monitor state"""
+    def update_from_dict(self, d):
+        """Process a data dict (from ESP32 POST or other source)"""
         try:
-            resp = requests.get(DATA_URL, timeout=5)
-            if resp.status_code == 200:
-                d = resp.json()
+            voltage = float(d.get('voltage', d.get('Voltage', 230)))
+            current = float(d.get('current', d.get('Current', 0)))
+            real_power = float(d.get('active_power', d.get('real_power', d.get('realPower', 0))))
+            reactive_power = float(d.get('reactive_power', d.get('reactivePower', d.get('Reactive_Power', 0))))
+            power_factor = float(d.get('pf', d.get('power_factor', d.get('powerFactor', 0.82))))
 
-                voltage = float(d.get('voltage', d.get('Voltage', 230)))
-                current = float(d.get('current', d.get('Current', 0)))
-                real_power = float(d.get('active_power', d.get('real_power', d.get('realPower', 0))))
-                reactive_power = float(d.get('reactive_power', d.get('reactivePower', d.get('Reactive_Power', 0))))
-                power_factor = float(d.get('pf', d.get('power_factor', d.get('powerFactor', 0.82))))
+            def to_bool(v):
+                if isinstance(v, bool):
+                    return v
+                if isinstance(v, str):
+                    return v.lower() in ('1', 'true', 'yes', 'on')
+                return bool(v)
 
-                def to_bool(v):
-                    if isinstance(v, bool):
-                        return v
-                    if isinstance(v, str):
-                        return v.lower() in ('1', 'true', 'yes', 'on')
-                    return bool(v)
+            relay_step = d.get('relay_status', -1)
+            if isinstance(relay_step, int) and 0 <= relay_step <= 6:
+                step_map = {
+                    0: (0, 0, 0),
+                    1: (0, 1, 0),
+                    2: (0, 0, 1),
+                    3: (0, 1, 1),
+                    4: (1, 0, 0),
+                    5: (1, 1, 0),
+                    6: (1, 1, 1),
+                }
+                cap1, cap2, cap3 = step_map[relay_step]
+            else:
+                r1 = d.get('relay1', d.get('Relay1', d.get('cap1', False)))
+                r2 = d.get('relay2', d.get('Relay2', d.get('cap2', False)))
+                r3 = d.get('relay3', d.get('Relay3', d.get('cap3', False)))
+                cap1 = to_bool(r1)
+                cap2 = to_bool(r2)
+                cap3 = to_bool(r3)
 
-                relay_step = d.get('relay_status', -1)
-                if isinstance(relay_step, int) and 0 <= relay_step <= 6:
-                    step_map = {
-                        0: (0, 0, 0),
-                        1: (0, 1, 0),
-                        2: (0, 0, 1),
-                        3: (0, 1, 1),
-                        4: (1, 0, 0),
-                        5: (1, 1, 0),
-                        6: (1, 1, 1),
-                    }
-                    cap1, cap2, cap3 = step_map[relay_step]
-                else:
-                    r1 = d.get('relay1', d.get('Relay1', d.get('cap1', False)))
-                    r2 = d.get('relay2', d.get('Relay2', d.get('cap2', False)))
-                    r3 = d.get('relay3', d.get('Relay3', d.get('cap3', False)))
-                    cap1 = to_bool(r1)
-                    cap2 = to_bool(r2)
-                    cap3 = to_bool(r3)
+            # Capacitance: relay1=8uF, relay2=3uF, relay3=3uF
+            cap_vals = {'cap1': 8, 'cap2': 3, 'cap3': 3}
+            total_cap = (cap_vals['cap1'] if cap1 else 0) + (cap_vals['cap2'] if cap2 else 0) + (cap_vals['cap3'] if cap3 else 0)
 
-                # Capacitance: relay1=8uF, relay2=3uF, relay3=3uF
-                cap_vals = {'cap1': 8, 'cap2': 3, 'cap3': 3}
-                total_cap = (cap_vals['cap1'] if cap1 else 0) + (cap_vals['cap2'] if cap2 else 0) + (cap_vals['cap3'] if cap3 else 0)
+            energy_wh = float(d.get('energy_wh', d.get('energy', d.get('Energy', 0))))
+            apparent_power = real_power / power_factor if power_factor > 0 else voltage * current
 
-                energy_wh = float(d.get('energy_wh', d.get('energy', d.get('Energy', 0))))
-                apparent_power = real_power / power_factor if power_factor > 0 else voltage * current
+            self.current_data['voltage'] = voltage
+            self.current_data['current'] = current
+            self.current_data['power_factor'] = power_factor
+            self.current_data['real_power'] = real_power
+            self.current_data['reactive_power'] = reactive_power
+            self.current_data['apparent_power'] = apparent_power
+            self.current_data['energy_wh'] = energy_wh
+            self.current_data['energy_kwh'] = energy_wh / 1000 if energy_wh else 0
+            self.current_data['cap1_state'] = bool(cap1)
+            self.current_data['cap2_state'] = bool(cap2)
+            self.current_data['cap3_state'] = bool(cap3)
+            self.current_data['total_capacitance'] = total_cap
+            self.current_data['relay_state'] = bool(cap1 or cap2 or cap3)
+            self.current_data['pf_correction_active'] = bool(cap1 or cap2 or cap3)
 
-                self.current_data['voltage'] = voltage
-                self.current_data['current'] = current
-                self.current_data['power_factor'] = power_factor
-                self.current_data['real_power'] = real_power
-                self.current_data['reactive_power'] = reactive_power
-                self.current_data['apparent_power'] = apparent_power
-                self.current_data['energy_wh'] = energy_wh
-                self.current_data['energy_kwh'] = energy_wh / 1000 if energy_wh else 0
-                self.current_data['cap1_state'] = bool(cap1)
-                self.current_data['cap2_state'] = bool(cap2)
-                self.current_data['cap3_state'] = bool(cap3)
-                self.current_data['total_capacitance'] = total_cap
-                self.current_data['relay_state'] = bool(cap1 or cap2 or cap3)
-                self.current_data['pf_correction_active'] = bool(cap1 or cap2 or cap3)
+            if current > 30:
+                self.current_data['load_status'] = 'HEAVY'
+            elif current > 5:
+                self.current_data['load_status'] = 'LIGHT'
+            else:
+                self.current_data['load_status'] = 'NONE'
 
-                if current > 30:
-                    self.current_data['load_status'] = 'HEAVY'
-                elif current > 5:
-                    self.current_data['load_status'] = 'LIGHT'
-                else:
-                    self.current_data['load_status'] = 'NONE'
+            if power_factor >= 0.95:
+                self.current_data['pf_quality'] = 'EXCELLENT'
+                self.current_data['health_status'] = 'Excellent'
+            elif power_factor >= 0.90:
+                self.current_data['pf_quality'] = 'GOOD'
+                self.current_data['health_status'] = 'Good'
+            elif power_factor >= 0.85:
+                self.current_data['pf_quality'] = 'ACCEPTABLE'
+                self.current_data['health_status'] = 'Monitor'
+            else:
+                self.current_data['pf_quality'] = 'POOR'
+                self.current_data['health_status'] = 'Warning'
 
-                if power_factor >= 0.95:
-                    self.current_data['pf_quality'] = 'EXCELLENT'
-                    self.current_data['health_status'] = 'Excellent'
-                elif power_factor >= 0.90:
-                    self.current_data['pf_quality'] = 'GOOD'
-                    self.current_data['health_status'] = 'Good'
-                elif power_factor >= 0.85:
-                    self.current_data['pf_quality'] = 'ACCEPTABLE'
-                    self.current_data['health_status'] = 'Monitor'
-                else:
-                    self.current_data['pf_quality'] = 'POOR'
-                    self.current_data['health_status'] = 'Warning'
-
-                self.current_data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                self.data_history.append(self.current_data.copy())
-                self.generate_recommendations()
-                self.check_alerts()
-                socketio.emit('data_update', self.current_data)
-                self.last_data_time = time.time()
-                return True
+            self.current_data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.data_history.append(self.current_data.copy())
+            self.generate_recommendations()
+            self.check_alerts()
+            socketio.emit('data_update', self.current_data)
+            self.last_data_time = time.time()
+            return True
 
         except Exception as e:
-            print(f"Fetch error: {e}")
+            print(f"Process error: {e}")
 
         return False
     
@@ -1432,6 +1428,14 @@ HTML_TEMPLATE = '''
 def index():
     return render_template_string(HTML_TEMPLATE)
 
+@app.route('/api/data', methods=['POST'])
+def receive_data():
+    d = request.get_json()
+    if d:
+        monitor.update_from_dict(d)
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'No data'}), 400
+
 @app.route('/api/current-data')
 def get_current_data():
     return jsonify({
@@ -1465,24 +1469,15 @@ def get_recommendations():
 # ============================================
 # DATA FETCHER THREAD
 # ============================================
-def fetch_from_url():
-    """Fetch power data from URL endpoint"""
-    print(f"🌐 Fetching data from: {DATA_URL}")
-
+def watchdog():
+    """Start simulation if no data received from ESP32 for 30s"""
+    time.sleep(10)
     while monitor.running:
-        if monitor.fetch_from_url():
-            data = monitor.current_data
-            cap_status = []
-            if data['cap1_state']: cap_status.append('8')
-            if data['cap2_state']: cap_status.append('3')
-            if data['cap3_state']: cap_status.append('3')
-            caps = '+'.join(cap_status) if cap_status else 'OFF'
-            print(f"📊 PF={data['power_factor']:.3f}/{data['target_pf']:.2f} | I={data['current']:.1f}A | "
-                  f"P={data['real_power']:.0f}W | Caps={caps}({data['total_capacitance']:.0f}μF) | {data['pf_quality']}")
-        else:
-            print("⚠️ Failed to fetch data, retrying...")
-
-        time.sleep(FETCH_INTERVAL)
+        if time.time() - monitor.last_data_time > 30:
+            print("\n⚠️ No data from ESP32 for 30s - starting simulation mode")
+            simulate_data()
+            break
+        time.sleep(5)
 
 def simulate_data():
     """Simulate data for testing without Arduino"""
@@ -1601,22 +1596,22 @@ if __name__ == '__main__':
     print("="*60)
     print("Developer: SIMON")
     print("------------------------------------------")
-    print(f"🌐 Fetching data from: {DATA_URL}")
     print("🌐 Web Dashboard: http://localhost:5000")
+    print("📡 ESP32 POST endpoint: /api/data")
     print("🔄 Real-time updates via WebSocket")
     print("💡 PF Correction Target: 0.95")
     print("📊 Capacitor Bank: 8μF, 3μF, 3μF")
     print("="*60)
     print()
     
-    # Start data fetcher thread
-    reader_thread = threading.Thread(target=fetch_from_url, daemon=True)
-    reader_thread.start()
+    # Start watchdog thread (falls back to simulation if no ESP32 data)
+    watchdog_thread = threading.Thread(target=watchdog, daemon=True)
+    watchdog_thread.start()
     
     port = int(os.environ.get('PORT', 5000))
     print("✅ System started!")
     print(f"📊 Web Dashboard: http://0.0.0.0:{port}")
-    print("🔌 WebSocket: Real-time updates enabled")
+    print(f"🔌 ESP32 should POST data to: http://0.0.0.0:{port}/api/data")
     print("\nPress Ctrl+C to stop\n")
     
     socketio.run(app, host='0.0.0.0', port=port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)

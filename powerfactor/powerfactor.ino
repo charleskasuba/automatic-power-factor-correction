@@ -8,7 +8,7 @@
 // --- WiFi & Server Configurations ---
 const char* WIFI_SSID = "THE METHOD ZONE";
 const char* WIFI_PASS = "Chabu321+";
-const char* SERVER_URL = "https://smartmeter-isps.onrender.com/api/data";
+const char* SERVER_URL = "https://automatic-power-factor-correction.onrender.com/api/data";
 
 // --- Hardware Pin Definitions ---
 const int SEC_VOLTAGE_PIN = 32;    // ZMPT101B Analog Pin
