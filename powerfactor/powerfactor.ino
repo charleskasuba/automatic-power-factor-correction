@@ -190,53 +190,8 @@ void loop() {
         
         snprintf(rowBuffer, sizeof(rowBuffer), "Relay Status: %s", capLabel); lcd.setCursor(0, 3); lcd.print(rowBuffer);
         displayPage = 0;  
-        break;
-    }
-  }
-}
-
-void adjustPowerFactor(float currentPF, float currentPower) {
-  if (currentPower < MIN_POWER_WATT) {
-    if (activeStep != 0) setCapacitorStep(0);
-    return;
-  }
-
-  // If PF is lower than target, step up capacity smoothly
-  if (currentPF < TARGET_PF && currentPF > 0.1) {
-    if (activeStep < 6) {
-      activeStep++;
-      setCapacitorStep(activeStep);
-      delay(600); 
-    }
-  }
-}
-
-void setCapacitorStep(int step) {
-  activeStep = step;
-  switch(step) {
-    case 0: // 0 uF - all OFF
-      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_3UF_B_PIN, HIGH);
-      break;
-    case 1: // 3 uF - relay2 only
-      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_3UF_B_PIN, HIGH);
-      break;
-    case 2: // 3 uF - relay3 only
-      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_3UF_B_PIN, LOW);
-      break;
-    case 3: // 6 uF - relay2 + relay3
-      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_3UF_B_PIN, LOW);
-      break;
-    case 4: // 8 uF - relay1 only
-      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_3UF_B_PIN, HIGH);
-      break;
-    case 5: // 11 uF - relay1 + relay2
-      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_3UF_B_PIN, HIGH);
-      break;
-    case 6: // 14 uF - all relays
-      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_3UF_B_PIN, LOW);
       break;
   }
-}
 }
 
 float readAnalogVoltage() {
