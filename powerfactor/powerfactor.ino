@@ -171,7 +171,7 @@ void loop() {
         lcd.setCursor(0, 0); lcd.print("--- MONITOR LINE ---");
         snprintf(rowBuffer, sizeof(rowBuffer), "Voltage: %5.1f V   ", analog_voltage); lcd.setCursor(0, 1); lcd.print(rowBuffer);
         snprintf(rowBuffer, sizeof(rowBuffer), "Current: %5.2f A   ", analog_current); lcd.setCursor(0, 2); lcd.print(rowBuffer);
-        snprintf(rowBuffer, sizeof(rowBuffer), "                    ");                lcd.setCursor(0, 3); lcd.print(rowBuffer);
+        snprintf(rowBuffer, sizeof(rowBuffer), "                    ");                                lcd.setCursor(0, 3); lcd.print(rowBuffer);
         displayPage = 2;
         break;
 
@@ -190,9 +190,10 @@ void loop() {
         
         snprintf(rowBuffer, sizeof(rowBuffer), "Relay Status: %s", capLabel); lcd.setCursor(0, 3); lcd.print(rowBuffer);
         displayPage = 0;  
-      break;
+        break;
+    }
   }
-}
+} // <--- FIXED: Added this missing closing brace for void loop()
 
 float readAnalogVoltage() {
   int maxValue = 0, minValue = 4095;
@@ -218,4 +219,14 @@ float readAnalogCurrent() {
   float voltageValuePP = ((maxValue - minValue) * 3.3) / 4095.0;
   float rmsCurrent = ((voltageValuePP / 2.0) * 0.707) / 0.185;
   return (rmsCurrent < 0.08) ? 0.0 : rmsCurrent; 
+}
+
+// --- Added Placeholders for Missing Functions to Clear Compiling ---
+void adjustPowerFactor(float currentPF, float currentPower) {
+  // Add your logic here to increment/decrement activeStep based on currentPF & TARGET_PF
+  // Example: if (currentPF < TARGET_PF && currentPower > MIN_POWER_WATT) { ... }
+}
+
+void setCapacitorStep(int step) {
+  // Add your logic here to drive the relays based on the given step number
 }

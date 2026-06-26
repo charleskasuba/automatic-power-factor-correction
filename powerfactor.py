@@ -1,24 +1,18 @@
 """
 POWER FACTOR CORRECTION SYSTEM - Python Backend
-Fetches power data from URL endpoint and serves to Web Dashboard
+Receives data from ESP32 via POST /api/data and serves Web Dashboard
 """
 
 import os
 import time
 import json
 from datetime import datetime
-import threading
-import requests
-from flask import Flask, jsonify, send_from_directory, render_template_string
+from flask import Flask, jsonify, request, render_template_string
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from collections import deque
 import warnings
 warnings.filterwarnings('ignore')
-
-# URL to fetch real-time power data from (Arduino/ESP32 cloud endpoint)
-DATA_URL = os.environ.get('DATA_URL', "https://smartmeter-isps.onrender.com/api/data")
-FETCH_INTERVAL = 3  # seconds between fetches
 
 app = Flask(__name__)
 CORS(app)
@@ -1466,126 +1460,7 @@ def get_recommendations():
         'recommendations': list(monitor.recommendations)
     })
 
-# ============================================
-# DATA FETCHER THREAD
-# ============================================
-def watchdog():
-    """Start simulation if no data received from ESP32 for 30s"""
-    time.sleep(10)
-    while monitor.running:
-        if time.time() - monitor.last_data_time > 30:
-            print("\n⚠️ No data from ESP32 for 30s - starting simulation mode")
-            simulate_data()
-            break
-        time.sleep(5)
 
-def simulate_data():
-    """Simulate data for testing without Arduino"""
-    import random
-    import math
-    
-    print("\n🎮 SIMULATION MODE ACTIVE")
-    print("   Showing demo data for Power Factor Correction")
-    print("   Configure DATA_URL for real data\n")
-    
-    angle = 0
-    cap1 = cap2 = cap3 = False
-    energy = 0
-    
-    while monitor.running:
-        angle += 0.3
-        
-        # Simulate varying load
-        current = 8 + 15 * abs(math.sin(angle))
-        current += random.uniform(-0.5, 0.5)
-        current = max(2, min(40, current))
-        
-        # Simulate PF based on capacitors
-        base_pf = 0.78
-        total_cap = 0
-        if cap1: total_cap += 8
-        if cap2: total_cap += 3
-        if cap3: total_cap += 3
-        
-        power_factor = base_pf + (total_cap * 0.025)
-        power_factor = min(0.99, max(0.72, power_factor))
-        
-        # Auto-toggle capacitors based on PF
-        if power_factor < 0.82 and not cap1:
-            cap1 = True
-            print("🔄 SIM: Added 8μF capacitor")
-        elif power_factor < 0.86 and cap1 and not cap2:
-            cap2 = True
-            print("🔄 SIM: Added 3μF capacitor")
-        elif power_factor < 0.90 and cap2 and not cap3:
-            cap3 = True
-            print("🔄 SIM: Added 3μF capacitor")
-        elif power_factor > 0.97 and cap3:
-            cap3 = False
-            print("🔄 SIM: Removed 3μF capacitor")
-        elif power_factor > 0.96 and cap2:
-            cap2 = False
-            print("🔄 SIM: Removed 3μF capacitor")
-        elif power_factor > 0.95 and cap1:
-            cap1 = False
-            print("🔄 SIM: Removed 8μF capacitor")
-        
-        voltage = 230 + random.uniform(-3, 3)
-        real_power = voltage * current * power_factor
-        apparent_power = voltage * current
-        
-        # Energy calculation
-        energy += (real_power / 3600)
-        if energy > 100000:
-            energy = 0
-        
-        total_cap = (8 if cap1 else 0) + (3 if cap2 else 0) + (3 if cap3 else 0)
-        
-        reactive_power = math.sqrt(max(0, apparent_power**2 - real_power**2))
-
-        # Update data
-        monitor.current_data = {
-            'voltage': round(voltage, 1),
-            'current': round(current, 2),
-            'power_factor': round(power_factor, 3),
-            'target_pf': 0.95,
-            'real_power': round(real_power, 1),
-            'reactive_power': round(reactive_power, 1),
-            'apparent_power': round(apparent_power, 1),
-            'energy_wh': round(energy, 1),
-            'energy_kwh': round(energy / 1000, 3),
-            'cap1_state': cap1,
-            'cap2_state': cap2,
-            'cap3_state': cap3,
-            'total_capacitance': total_cap,
-            'relay_state': cap1 or cap2 or cap3,
-            'pf_correction_active': cap1 or cap2 or cap3,
-            'load_status': 'HEAVY' if current > 25 else 'LIGHT' if current > 5 else 'NONE',
-            'pf_quality': 'EXCELLENT' if power_factor >= 0.95 else 'GOOD' if power_factor >= 0.90 else 'ACCEPTABLE' if power_factor >= 0.85 else 'POOR',
-            'health_status': 'Excellent' if power_factor >= 0.95 else 'Good' if power_factor >= 0.90 else 'Monitor' if power_factor >= 0.85 else 'Warning',
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        
-        # Add to history
-        monitor.data_history.append(monitor.current_data.copy())
-        
-        # Generate recommendations and alerts
-        monitor.generate_recommendations()
-        monitor.check_alerts()
-        
-        # Emit to WebSocket
-        socketio.emit('data_update', monitor.current_data)
-        
-        cap_status = []
-        if cap1: cap_status.append('8')
-        if cap2: cap_status.append('3')
-        if cap3: cap_status.append('3')
-        caps = '+'.join(cap_status) if cap_status else 'OFF'
-        
-        print(f"📊 [SIM] PF={power_factor:.3f}/0.95 | I={current:.1f}A | "
-              f"P={real_power:.0f}W | Caps={caps}({total_cap}μF) | {monitor.current_data['pf_quality']}")
-        
-        time.sleep(1)
 
 # ============================================
 # MAIN EXECUTION
@@ -1603,10 +1478,6 @@ if __name__ == '__main__':
     print("📊 Capacitor Bank: 8μF, 3μF, 3μF")
     print("="*60)
     print()
-    
-    # Start watchdog thread (falls back to simulation if no ESP32 data)
-    watchdog_thread = threading.Thread(target=watchdog, daemon=True)
-    watchdog_thread.start()
     
     port = int(os.environ.get('PORT', 5000))
     print("✅ System started!")
