@@ -67,13 +67,9 @@ class PFCMonitor:
 
                 voltage = float(d.get('voltage', d.get('Voltage', 230)))
                 current = float(d.get('current', d.get('Current', 0)))
-                real_power = float(d.get('real_power', d.get('realPower', d.get('Real_Power', 0))))
+                real_power = float(d.get('active_power', d.get('real_power', d.get('realPower', 0))))
                 reactive_power = float(d.get('reactive_power', d.get('reactivePower', d.get('Reactive_Power', 0))))
-                power_factor = float(d.get('power_factor', d.get('powerFactor', d.get('Power_Factor', 0.82))))
-
-                relay1 = d.get('relay1', d.get('Relay1', d.get('cap1', False)))
-                relay2 = d.get('relay2', d.get('Relay2', d.get('cap2', False)))
-                relay3 = d.get('relay3', d.get('Relay3', d.get('cap3', False)))
+                power_factor = float(d.get('pf', d.get('power_factor', d.get('powerFactor', 0.82))))
 
                 def to_bool(v):
                     if isinstance(v, bool):
@@ -82,9 +78,25 @@ class PFCMonitor:
                         return v.lower() in ('1', 'true', 'yes', 'on')
                     return bool(v)
 
-                cap1 = to_bool(relay1)
-                cap2 = to_bool(relay2)
-                cap3 = to_bool(relay3)
+                relay_step = d.get('relay_status', -1)
+                if isinstance(relay_step, int) and 0 <= relay_step <= 6:
+                    step_map = {
+                        0: (0, 0, 0),
+                        1: (0, 1, 0),
+                        2: (0, 0, 1),
+                        3: (0, 1, 1),
+                        4: (1, 0, 0),
+                        5: (1, 1, 0),
+                        6: (1, 1, 1),
+                    }
+                    cap1, cap2, cap3 = step_map[relay_step]
+                else:
+                    r1 = d.get('relay1', d.get('Relay1', d.get('cap1', False)))
+                    r2 = d.get('relay2', d.get('Relay2', d.get('cap2', False)))
+                    r3 = d.get('relay3', d.get('Relay3', d.get('cap3', False)))
+                    cap1 = to_bool(r1)
+                    cap2 = to_bool(r2)
+                    cap3 = to_bool(r3)
 
                 # Capacitance: relay1=8uF, relay2=3uF, relay3=3uF
                 cap_vals = {'cap1': 8, 'cap2': 3, 'cap3': 3}
@@ -101,12 +113,12 @@ class PFCMonitor:
                 self.current_data['apparent_power'] = apparent_power
                 self.current_data['energy_wh'] = energy_wh
                 self.current_data['energy_kwh'] = energy_wh / 1000 if energy_wh else 0
-                self.current_data['cap1_state'] = cap1
-                self.current_data['cap2_state'] = cap2
-                self.current_data['cap3_state'] = cap3
+                self.current_data['cap1_state'] = bool(cap1)
+                self.current_data['cap2_state'] = bool(cap2)
+                self.current_data['cap3_state'] = bool(cap3)
                 self.current_data['total_capacitance'] = total_cap
-                self.current_data['relay_state'] = cap1 or cap2 or cap3
-                self.current_data['pf_correction_active'] = cap1 or cap2 or cap3
+                self.current_data['relay_state'] = bool(cap1 or cap2 or cap3)
+                self.current_data['pf_correction_active'] = bool(cap1 or cap2 or cap3)
 
                 if current > 30:
                     self.current_data['load_status'] = 'HEAVY'

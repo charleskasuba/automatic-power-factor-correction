@@ -15,7 +15,7 @@ const int SEC_VOLTAGE_PIN = 32;    // ZMPT101B Analog Pin
 const int SEC_CURRENT_PIN = 33;    // ACS712 Analog Pin
 const int RELAY_8UF_PIN = 18;      // Relay 1 (8uF Capacitor)
 const int RELAY_3UF_PIN = 19;      // Relay 2 (3uF Capacitor)
-const int RELAY_5UF_PIN = 5;       // Relay 3 (5uF Capacitor)
+const int RELAY_3UF_B_PIN = 5;     // Relay 3 (3uF Capacitor)
 
 // --- Target Settings ---
 const float TARGET_PF = 0.95;       // Desired minimum power factor
@@ -30,7 +30,7 @@ PZEM004Tv30 pzemModule(Serial2, 26, 25);
 // --- Global Variables ---
 float voltage = 0, current = 0, active_power = 0, reactive_power = 0, pf = 0;
 float analog_voltage = 0, analog_current = 0;
-int activeStep = 0; // 0=None, 1=3uF, 2=5uF, 3=8uF, 4=11uF, 5=13uF, 6=16uF
+int activeStep = 0; // 0=None, 1=3uF, 2=3uF, 3=6uF, 4=8uF, 5=11uF, 6=14uF
 
 // --- Timing Variables ---
 unsigned long lastSend = 0;
@@ -54,12 +54,12 @@ void setup() {
   // Configure Relay Pins
   pinMode(RELAY_8UF_PIN, OUTPUT);
   pinMode(RELAY_3UF_PIN, OUTPUT);
-  pinMode(RELAY_5UF_PIN, OUTPUT);
+  pinMode(RELAY_3UF_B_PIN, OUTPUT);
   
   // Initialize Relays to OFF (Assuming Active LOW relay boards; use HIGH for OFF)
   digitalWrite(RELAY_8UF_PIN, HIGH); 
   digitalWrite(RELAY_3UF_PIN, HIGH);
-  digitalWrite(RELAY_5UF_PIN, HIGH);
+  digitalWrite(RELAY_3UF_B_PIN, HIGH);
 
   pinMode(SEC_VOLTAGE_PIN, INPUT);
   pinMode(SEC_CURRENT_PIN, INPUT);
@@ -124,11 +124,16 @@ void loop() {
     Serial.println("\n--- SYSTEM MEASUREMENT REPORT ---");
     Serial.printf("Line Metrics:     V=%.1fV | I=%.2fA | P_Act=%.1fW | P_React=%.1fVAR | PF=%.2f\n", voltage, current, active_power, reactive_power, pf);
     Serial.printf("Monitor Line:     V=%.1fV | I=%.2fA\n", analog_voltage, analog_current);
-    Serial.printf("Relay Status:     Active Cap Step=%d\n", activeStep);
+    Serial.printf("Relay Status:     Step=%d | R1(8uF)=%s R2(3uF)=%s R3(3uF)=%s\n", activeStep, digitalRead(RELAY_8UF_PIN) == LOW ? "ON" : "OFF", digitalRead(RELAY_3UF_PIN) == LOW ? "ON" : "OFF", digitalRead(RELAY_3UF_B_PIN) == LOW ? "ON" : "OFF");
     Serial.println("-------------------------------------------------");
 
     // Send API Payload
     if (WiFi.status() == WL_CONNECTED) {
+      // Determine individual relay states from activeStep
+      bool relay1_on = (activeStep >= 4);
+      bool relay2_on = (activeStep == 1 || activeStep == 3 || activeStep >= 5);
+      bool relay3_on = (activeStep == 2 || activeStep == 3 || activeStep == 6);
+
       String json = "{\"voltage\":" + String(voltage, 1) + 
                     ",\"current\":" + String(current, 2) + 
                     ",\"active_power\":" + String(active_power, 1) + 
@@ -136,7 +141,10 @@ void loop() {
                     ",\"pf\":" + String(pf, 2) + 
                     ",\"analog_voltage\":" + String(analog_voltage, 1) + 
                     ",\"analog_current\":" + String(analog_current, 2) + 
-                    ",\"relay_status\":" + String(activeStep) + "}";
+                    ",\"relay_status\":" + String(activeStep) + 
+                    ",\"relay1\":" + (relay1_on ? "true" : "false") + 
+                    ",\"relay2\":" + (relay2_on ? "true" : "false") + 
+                    ",\"relay3\":" + (relay3_on ? "true" : "false") + "}";
       HTTPClient http;
       http.begin(SERVER_URL);
       http.addHeader("Content-Type", "application/json");
@@ -173,12 +181,12 @@ void loop() {
         snprintf(rowBuffer, sizeof(rowBuffer), "Reactive: %5.1f VAR ", reactive_power); lcd.setCursor(0, 2); lcd.print(rowBuffer);
         
         const char* capLabel = "0uF          ";
-        if(activeStep == 1)      capLabel = "3uF          ";
-        else if(activeStep == 2) capLabel = "5uF          ";
-        else if(activeStep == 3) capLabel = "8uF          ";
-        else if(activeStep == 4) capLabel = "11uF (3+8)   ";
-        else if(activeStep == 5) capLabel = "13uF (5+8)   ";
-        else if(activeStep == 6) capLabel = "16uF (All)   ";
+        if(activeStep == 1)      capLabel = "3uF (R2)     ";
+        else if(activeStep == 2) capLabel = "3uF (R3)     ";
+        else if(activeStep == 3) capLabel = "6uF (R2+R3)  ";
+        else if(activeStep == 4) capLabel = "8uF (R1)     ";
+        else if(activeStep == 5) capLabel = "11uF (R1+R2) ";
+        else if(activeStep == 6) capLabel = "14uF (All)   ";
         
         snprintf(rowBuffer, sizeof(rowBuffer), "Relay Status: %s", capLabel); lcd.setCursor(0, 3); lcd.print(rowBuffer);
         displayPage = 0;  
@@ -206,28 +214,29 @@ void adjustPowerFactor(float currentPF, float currentPower) {
 void setCapacitorStep(int step) {
   activeStep = step;
   switch(step) {
-    case 0: // 0 uF
-      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_5UF_PIN, HIGH);
+    case 0: // 0 uF - all OFF
+      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_3UF_B_PIN, HIGH);
       break;
-    case 1: // 3 uF 
-      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_5UF_PIN, HIGH);
+    case 1: // 3 uF - relay2 only
+      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_3UF_B_PIN, HIGH);
       break;
-    case 2: // 5 uF
-      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_5UF_PIN, LOW);
+    case 2: // 3 uF - relay3 only
+      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_3UF_B_PIN, LOW);
       break;
-    case 3: // 8 uF
-      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_5UF_PIN, HIGH);
+    case 3: // 6 uF - relay2 + relay3
+      digitalWrite(RELAY_8UF_PIN, HIGH); digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_3UF_B_PIN, LOW);
       break;
-    case 4: // 11 uF (3uF + 8uF)
-      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_5UF_PIN, HIGH);
+    case 4: // 8 uF - relay1 only
+      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_3UF_B_PIN, HIGH);
       break;
-    case 5: // 13 uF (5uF + 8uF)
-      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, HIGH); digitalWrite(RELAY_5UF_PIN, LOW);
+    case 5: // 11 uF - relay1 + relay2
+      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_3UF_B_PIN, HIGH);
       break;
-    case 6: // 16 uF (3uF + 5uF + 8uF)
-      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_5UF_PIN, LOW);
+    case 6: // 14 uF - all relays
+      digitalWrite(RELAY_8UF_PIN, LOW);  digitalWrite(RELAY_3UF_PIN, LOW);  digitalWrite(RELAY_3UF_B_PIN, LOW);
       break;
   }
+}
 }
 
 float readAnalogVoltage() {
